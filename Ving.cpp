@@ -280,6 +280,7 @@ void assessXLType(vector<sMS2>& v){
       v[a].type=xlSingle;
       v[a].sequence=v[a].peptide;
       v[a].proteinS=v[a].protein;
+      if(v[a].sequence.find("K[3")!=string::npos) v[a].type=xlDeadEnd; //generally make deadends known here
       continue;
     }
 
@@ -501,7 +502,7 @@ void exportResults2(char* fn, vector<sMS2>& v){
 void marquee() {
   cout << "Ving: Some sort of cleavable crosslinker analysis program" << endl;
   cout << "Copyright Michael Hoopmann, Institute for Systems Biology" << endl;
-  cout << "Version/Build: 2021.06.09" << endl;
+  cout << "Version/Build: 2021.06.11" << endl;
 }
 
 void usage(){
