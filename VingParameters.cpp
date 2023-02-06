@@ -120,6 +120,9 @@ void VingParameters::parseParam(const char* str){
     mzML = values[0];
   } else if (strcmp(param, "output_name") == 0) {
     output = values[0];
+  } else if (strcmp(param, "probability_type") == 0) {
+    if(atoi(values[0].c_str())==1) probabilityType=true;
+    else probabilityType=false;
   }
 }
 

@@ -32,6 +32,7 @@ public:
   std::string ms2SearchResult;
   std::string ms3SearchResult;
   std::string output;
+  bool probabilityType=false;
 
 private:
   //double* log=NULL;

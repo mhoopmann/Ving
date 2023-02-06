@@ -2,7 +2,6 @@
 
 using namespace MSToolkit;
 using namespace std;
-//using namespace mzParser;
 
 VingData::VingData(VingParameters* p){
   params=p;
@@ -15,47 +14,48 @@ VingData::~VingData(){
 void VingData::assessXLType() {
   for (size_t a = 0; a < groups.size(); a++) {
 
+    //First compute the neutral precursor mass. If a monoisotopic peak was not provided, then
+    //estimate the neutral precursor mass from the selected ion peak.
+    double mm;
+    if (groups[a].monoMZ > 0) mm = groups[a].monoMZ * groups[a].charge - PROTON * groups[a].charge;
+    else mm = groups[a].mz * groups[a].charge - PROTON * groups[a].charge;
+    double ppm = mm / 1e6 * 10;
+
     //Single peptides are defined by high probability after MS2 searching.
-    if (groups[a].probabilityMS2 > 0.8) {
+    if (groups[a].probabilityMS2 > groups[a].probability) {
       groups[a].type = xlSingle;
       groups[a].sequence = groups[a].peptide;
       groups[a].proteinS = groups[a].protein;
+      groups[a].probability= groups[a].probabilityMS2;
+      groups[a].calcNeutMassG=groups[a].calcNeutMass;
+      groups[a].ppmG=(mm-groups[a].calcNeutMass)/groups[a].calcNeutMass*1e6;
       for (size_t b = 0; b < groups[a].mods.size(); b++) {
         if (params->crosslinker.targetA.find(groups[a].mods[b].aa) != string::npos) {
-          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassA)) < 0.01) {
+          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassA)) < ppm) {
             groups[a].type = xlDeadEnd; //generally make deadends known here
             break;
           }
         }
         if (params->crosslinker.targetB.find(groups[a].mods[b].aa) != string::npos) {
-          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassB)) < 0.01) {
+          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassB)) < ppm) {
             groups[a].type = xlDeadEnd; //generally make deadends known here
             break;
           }
         }
       }
-      continue;
     }
 
     //If MS2 group has no MS3 peptides of good probability, leave type as Unknown.
     int lowE = 0;
     for (size_t b = 0; b < groups[a].ms3.size(); b++) {
-      if (groups[a].ms3[b].prob > 0.8) lowE++;
+      if (groups[a].ms3[b].prob > 0.0) lowE++;
     }
     if (lowE < 1) continue;
 
     //Look for XL-related results
-    //First compute the neutral precursor mass. If a monoisotopic peak was not provided, then
-    //estimate the neutral precursor mass from the selected ion peak.
-    double mm;
-    if (groups[a].monoMZ > 0) mm = groups[a].monoMZ * groups[a].charge - 1.007276466 * groups[a].charge;
-    else mm = groups[a].mz * groups[a].charge - 1.007276466 * groups[a].charge;
-
     vector<sXLPep> xl; //sort through all combinations of MS3 peptides with crosslink mods
     for (size_t b = 0; b < groups[a].ms3.size(); b++) {
-      if (groups[a].ms3[b].prob < 0.8) continue;
       if (groups[a].ms3[b].stubMass != 0) {
-        //if (groups[a].ms3[b].peptide.find("H[") != string::npos) {
         sXLPep p;
         p.index = b;
         p.mass = groups[a].ms3[b].pepMass - groups[a].ms3[b].stubMass;
@@ -63,98 +63,64 @@ void VingData::assessXLType() {
         xl.push_back(p);
       }
     }
+
     //no crosslink mods, then not a crosslink that we can see....
     //TODO: try to fall back on alternate means, such as looking for reporter ions, etc.
     if (xl.size() < 1) continue;
     sort(xl.begin(), xl.end(), compareXL);
 
     double pm = 0;
-    int res = 0;
-    for (size_t b = 0; b < xl.size(); b++) {
-      pm = xl[b].mass;
-      double dif;
-      if(groups[a].ms3[xl[b].index].stubA) dif = mm - (pm+params->crosslinker.xlMass+params->crosslinker.capMassA);
-      else dif = mm - (pm + params->crosslinker.xlMass + params->crosslinker.capMassB);
-
-      //change this to check for the remaining mass of a dead-end
-      bool bDE = false;
-      if (fabs(dif) < 0.1) bDE = true;
-
-      //Dead-end has a mass difference of a long or short arm.
-      if (bDE) {
-        groups[a].type = xlDeadEnd;
-        groups[a].sequence = groups[a].ms3[xl[b].index].peptide;
-        groups[a].proteinS = groups[a].ms3[xl[b].index].protein;
-        res++;
-        break;
-
-        //XL has two peptides plus the spacer arm
-      } else {
-        for (size_t c = b + 1; c < xl.size(); c++) {
-          double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass;
-          double dif = mm - xm;
-
-          //if ((dif > 16.9 && dif < 19.2) || (dif > 48.9 && dif < 51.2)) {
-          if (fabs(dif) < 0.1) {
-            groups[a].type = xlXL;
-            groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
-            groups[a].proteinS = groups[a].ms3[xl[b].index].protein + "+" + groups[a].ms3[xl[c].index].protein;
-            res++;
-            break;
-          }
-        }
-      }
-    }
-
-    //check for isotope error
-    //TODO: Mark isotope error somehow
-    if (res == 0) {
-      for (size_t b = 0; b < xl.size(); b++) {
+    for(int io=0;io<=1;io++){ //check all isotope errors
+      for (size_t b = 0; b < xl.size(); b++) { //check all MS3 peptides
         pm = xl[b].mass;
-        double dif;
-        if (groups[a].ms3[xl[b].index].stubA) dif = mm - (pm + params->crosslinker.xlMass + params->crosslinker.capMassA) - 1.003354835;
-        else dif = mm - (pm + params->crosslinker.xlMass + params->crosslinker.capMassB) - 1.003354835;
+        double nm;
+        if (groups[a].ms3[xl[b].index].stubA) nm=(pm+params->crosslinker.xlMass+params->crosslinker.capMassA);
+        else nm=(pm + params->crosslinker.xlMass + params->crosslinker.capMassB);
+        double dif = mm-nm - io * ISOTOPE_OFFSET;
 
         //change this to check for the remaining mass of a dead-end
         bool bDE = false;
-        if (fabs(dif) < 0.1) bDE = true;
+        if (fabs(dif) < ppm) bDE = true;
 
         //Dead-end has a mass difference of a long or short arm.
-        if (bDE) {
+        if (bDE && groups[a].ms3[xl[b].index].prob>groups[a].probability) {
           groups[a].type = xlDeadEnd;
           groups[a].sequence = groups[a].ms3[xl[b].index].peptide;
           groups[a].proteinS = groups[a].ms3[xl[b].index].protein;
-          res++;
-          break;
+          groups[a].probability = groups[a].ms3[xl[b].index].prob;
+          groups[a].calcNeutMassG= nm;
+          groups[a].ppmG = (mm-nm)/nm*1e6;
 
-          //XL has two peptides plus the spacer arm
+        //XL has two peptides plus the spacer arm
         } else {
-          for (size_t c = b + 1; c < xl.size(); c++) {
-            double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass;
-            double dif = mm - xm - 1.003354835;
+          for (size_t c = b + 1; c < xl.size(); c++) { //check all combinations with other MS3 peptides
+            double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass - io * ISOTOPE_OFFSET;
+            double dif = mm - xm;
 
-            //if ((dif > 16.9 && dif < 19.2) || (dif > 48.9 && dif < 51.2)) {
-            if (fabs(dif) < 0.1) {
+            if (fabs(dif) < ppm && groups[a].ms3[xl[b].index].prob* groups[a].ms3[xl[c].index].prob>groups[a].probability) {
               groups[a].type = xlXL;
               groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
               groups[a].proteinS = groups[a].ms3[xl[b].index].protein + "+" + groups[a].ms3[xl[c].index].protein;
-              res++;
-              break;
+              groups[a].probability= groups[a].ms3[xl[b].index].prob * groups[a].ms3[xl[c].index].prob;
+              groups[a].calcNeutMassG = xm;
+              groups[a].ppmG = (mm - xm) / xm * 1e6;
             }
           }
         }
       }
     }
 
-    if (res == 0) {
+    //Check to see if there are partial results if nothing found by this point.
+    if (groups[a].type==xlUnknown) {
       for (size_t b = 0; b < groups[a].ms3.size(); b++) {
-        if (groups[a].ms3[b].prob < 0.8) continue;
+        if (groups[a].ms3[b].prob < groups[a].probability) continue;
 
         //Cross-link is incomplete if there is evidence of a stub, but nothing adds up.
         if (groups[a].ms3[b].stubMass != 0) {
-          //if (groups[a].ms3[b].peptide.find("H[") != string::npos) {
           groups[a].type = xlIncomplete;
-          break;
+          groups[a].probability=groups[a].ms3[b].prob;
+          groups[a].calcNeutMassG=groups[a].ms3[b].pepMass;
+          groups[a].ppmG=(mm- groups[a].ms3[b].pepMass)/ groups[a].ms3[b].pepMass*1e6;
         }
       }
     }
@@ -191,6 +157,22 @@ bool VingData::importMS2SearchResults() {
   p.read(params->ms2SearchResult.c_str());
   cout << "Done reading" << endl;
 
+  bMS2Prophet[0]=false;
+  bMS2Prophet[1]=false;
+  for(size_t a=0;a<p.msms_pipeline_analysis[0].analysis_summary.size();a++){
+    CnpxAnalysisSummary* as=&p.msms_pipeline_analysis[0].analysis_summary[a];
+    if(as->analysis.compare("peptideprophet")==0) bMS2Prophet[0]=true;
+    if(as->analysis.compare("interprophet")==0) bMS2Prophet[1]=true;
+  }
+  if(params->probabilityType && !bMS2Prophet[1]){
+    cout << "Error: MS2 search results do not contain iProphet analysis." << endl;
+    return false;
+  }
+  if (!params->probabilityType && !bMS2Prophet[0]) {
+    cout << "Error: MS2 search results do not contain PeptideProphet analysis." << endl;
+    return false;
+  }
+
   size_t vp = 0;
 
   for (size_t a = 0; a < p.msms_pipeline_analysis[0].msms_run_summary[0].spectrum_query.size(); a++) {
@@ -226,8 +208,10 @@ bool VingData::importMS2SearchResults() {
     }*/
 
     for (size_t b = 0; b < sh->analysis_result.size(); b++) {
-      if (sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
+      if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
         groups[vp].probabilityMS2 = sh->analysis_result[b].peptide_prophet_result.probability;
+      } else if (params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
+        groups[vp].probabilityMS2 = sh->analysis_result[b].interprophet_result.probability;
       }
     }
 
@@ -251,6 +235,22 @@ bool VingData::importMS3SearchResults() {
   NeoPepXMLParser p;
   if(!p.read(params->ms3SearchResult.c_str())) return false;
   cout << "Done reading" << endl;
+
+  bMS3Prophet[0] = false;
+  bMS3Prophet[1] = false;
+  for (size_t a = 0; a < p.msms_pipeline_analysis[0].analysis_summary.size(); a++) {
+    CnpxAnalysisSummary* as = &p.msms_pipeline_analysis[0].analysis_summary[a];
+    if (as->analysis.compare("peptideprophet") == 0) bMS3Prophet[0] = true;
+    if (as->analysis.compare("interprophet") == 0) bMS3Prophet[1] = true;
+  }
+  if (params->probabilityType && !bMS3Prophet[1]) {
+    cout << "Error: MS3 search results do not contain iProphet analysis." << endl;
+    return false;
+  }
+  if (!params->probabilityType && !bMS3Prophet[0]) {
+    cout << "Error: MS3 search results do not contain PeptideProphet analysis." << endl;
+    return false;
+  }
 
   size_t vp = 0;
   size_t v3 = 0;
@@ -298,8 +298,10 @@ bool VingData::importMS3SearchResults() {
     }
 
     for (size_t b = 0; b < sh->analysis_result.size(); b++) {
-      if (sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
+      if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
         groups[vp].ms3[v3].prob = sh->analysis_result[b].peptide_prophet_result.probability;
+      } else if(params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
+        groups[vp].ms3[v3].prob = sh->analysis_result[b].interprophet_result.probability;
       }
     }
 
@@ -357,7 +359,15 @@ bool VingData::parseMzML(){
 
   groups.clear();
 
+  cout << "Reading: " << params->mzML << " ... ";
   if(!r.readFile(params->mzML.c_str(), s)) return false;
+    
+  //Set progress meter
+  int lastScan=r.getLastScan();
+  int iPercent=0;
+  printf("%2d%%", iPercent);
+  fflush(stdout);
+
   while (s.getScanNumber() > 0) {
 
     if (s.getMsLevel() == 1) {
@@ -403,8 +413,21 @@ bool VingData::parseMzML(){
       else cycle[a].ms3.push_back(ms3);
     }
 
+    //Update progress meter
+    int iTmp = (int)((double)s.getScanNumber() / lastScan * 100);
+    if (iTmp > iPercent) {
+      iPercent = iTmp;
+      printf("\b\b\b%2d%%", iPercent);
+      fflush(stdout);
+    }
+
     r.readFile(NULL, s);
   }
+
+  //Finalize progress meter
+  //printf("\b\b\b100%%");
+  cout << endl;
+
   for (size_t a = 0; a < cycle.size(); a++) {
     if (bMS2) groups.push_back(cycle[a]);
   }

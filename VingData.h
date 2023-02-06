@@ -8,6 +8,9 @@
 
 #include <algorithm>
 
+#define ISOTOPE_OFFSET 1.003354835
+#define PROTON 1.007276466
+
 enum eXLType {
   xlUnknown = 0,
   xlSingle,
@@ -55,6 +58,8 @@ typedef struct sMS2 {
   int charge;
   double monoMZ;
   double calcNeutMass;
+  double calcNeutMassG;
+  double ppmG;
   double probability;
   double probabilityMS2;
   std::string peptide;
@@ -71,6 +76,8 @@ typedef struct sMS2 {
     charge = 0;
     monoMZ = 0;
     calcNeutMass = 0;
+    calcNeutMassG=0;
+    ppmG=0;
     probability = 0;
     probabilityMS2 = 0;
     type = xlUnknown;
@@ -99,6 +106,9 @@ public:
 
 private:
   VingParameters* params = NULL;
+
+  bool bMS2Prophet[2]={false};  //0=PeptideProphet, 1=iProphet
+  bool bMS3Prophet[2]={false};
 
   static bool compareXL(sXLPep& a, sXLPep& b);
 };
