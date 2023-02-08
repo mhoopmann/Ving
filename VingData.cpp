@@ -31,15 +31,19 @@ void VingData::assessXLType() {
       groups[a].ppmG=(mm-groups[a].calcNeutMass)/groups[a].calcNeutMass*1e6;
       for (size_t b = 0; b < groups[a].mods.size(); b++) {
         if (params->crosslinker.targetA.find(groups[a].mods[b].aa) != string::npos) {
-          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassA)) < ppm) {
-            groups[a].type = xlDeadEnd; //generally make deadends known here
-            break;
+          for(size_t c=0;c<params->crosslinker.capMassA.size();c++){
+            if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassA[c])) < ppm) {
+              groups[a].type = xlDeadEnd; //generally make deadends known here
+              break;
+            }
           }
         }
         if (params->crosslinker.targetB.find(groups[a].mods[b].aa) != string::npos) {
-          if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassB)) < ppm) {
-            groups[a].type = xlDeadEnd; //generally make deadends known here
-            break;
+          for (size_t c = 0; c < params->crosslinker.capMassB.size(); c++) {
+              if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassB[c])) < ppm) {
+              groups[a].type = xlDeadEnd; //generally make deadends known here
+              break;
+            }
           }
         }
       }
@@ -74,37 +78,43 @@ void VingData::assessXLType() {
       for (size_t b = 0; b < xl.size(); b++) { //check all MS3 peptides
         pm = xl[b].mass;
         double nm;
-        if (groups[a].ms3[xl[b].index].stubA) nm=(pm+params->crosslinker.xlMass+params->crosslinker.capMassA);
-        else nm=(pm + params->crosslinker.xlMass + params->crosslinker.capMassB);
-        double dif = mm-nm - io * ISOTOPE_OFFSET;
+        vector<double>* vc;
+        if (groups[a].ms3[xl[b].index].stubA) vc= &params->crosslinker.capMassA;
+        else vc=&params->crosslinker.capMassB;
 
-        //change this to check for the remaining mass of a dead-end
-        bool bDE = false;
-        if (fabs(dif) < ppm) bDE = true;
+        //TODO: Revise this, perhaps. Maybe check for XL first. Then alternately check for all possible dead-end possibilities.
+        for(size_t d=0;d<vc->size();d++){
+          nm=(pm+params->crosslinker.xlMass+vc->at(d));
+          double dif = mm-nm - io * ISOTOPE_OFFSET;
 
-        //Dead-end has a mass difference of a long or short arm.
-        if (bDE && groups[a].ms3[xl[b].index].prob>groups[a].probability) {
-          groups[a].type = xlDeadEnd;
-          groups[a].sequence = groups[a].ms3[xl[b].index].peptide;
-          groups[a].proteinS = groups[a].ms3[xl[b].index].protein;
-          groups[a].probability = groups[a].ms3[xl[b].index].prob;
-          groups[a].calcNeutMassG= nm;
-          groups[a].ppmG = (mm-nm)/nm*1e6;
+          //change this to check for the remaining mass of a dead-end
+          bool bDE = false;
+          if (fabs(dif) < ppm) bDE = true;
+
+          //Dead-end has a mass difference of a long or short arm.
+          if (bDE && groups[a].ms3[xl[b].index].prob>groups[a].probability) {
+            groups[a].type = xlDeadEnd;
+            groups[a].sequence = groups[a].ms3[xl[b].index].peptide;
+            groups[a].proteinS = groups[a].ms3[xl[b].index].protein;
+            groups[a].probability = groups[a].ms3[xl[b].index].prob;
+            groups[a].calcNeutMassG= nm;
+            groups[a].ppmG = (mm-nm)/nm*1e6;
+          }
+        }
 
         //XL has two peptides plus the spacer arm
-        } else {
-          for (size_t c = b + 1; c < xl.size(); c++) { //check all combinations with other MS3 peptides
-            double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass - io * ISOTOPE_OFFSET;
-            double dif = mm - xm;
-
-            if (fabs(dif) < ppm && groups[a].ms3[xl[b].index].prob* groups[a].ms3[xl[c].index].prob>groups[a].probability) {
-              groups[a].type = xlXL;
-              groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
-              groups[a].proteinS = groups[a].ms3[xl[b].index].protein + "+" + groups[a].ms3[xl[c].index].protein;
-              groups[a].probability= groups[a].ms3[xl[b].index].prob * groups[a].ms3[xl[c].index].prob;
-              groups[a].calcNeutMassG = xm;
-              groups[a].ppmG = (mm - xm) / xm * 1e6;
-            }
+        for (size_t c = b + 1; c < xl.size(); c++) { //check all combinations with other MS3 peptides
+          double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass - io * ISOTOPE_OFFSET;
+          double dif = mm - xm;
+          
+          //crosslinks that have the same probability as a different result take precedence.
+          if (fabs(dif) < ppm && groups[a].ms3[xl[b].index].prob* groups[a].ms3[xl[c].index].prob>=groups[a].probability*groups[a].probability) {
+            groups[a].type = xlXL;
+            groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
+            groups[a].proteinS = groups[a].ms3[xl[b].index].protein + "+" + groups[a].ms3[xl[c].index].protein;
+            groups[a].probability= groups[a].ms3[xl[b].index].prob * groups[a].ms3[xl[c].index].prob;
+            groups[a].calcNeutMassG = xm;
+            groups[a].ppmG = (mm - xm) / xm * 1e6;
           }
         }
       }
@@ -343,7 +353,7 @@ bool VingData::importMS3SearchResults() {
       }
     }
   }
-
+  return true;
 }
 
 bool VingData::parseMzML(){
@@ -433,6 +443,7 @@ bool VingData::parseMzML(){
   }
 
   cout << groups.size() << " total groups." << endl;
+  return true;
 }
 
 bool VingData::compareXL(sXLPep& a, sXLPep& b) {

@@ -162,11 +162,11 @@ bool VingParameters::parseXLTable(char* str){
   else return false;
 
   tok = strtok(NULL, " \t\n\r");
-  if (checkToken(tok)) x.capMassA=atof(tok);
+  if (checkToken(tok)) splitMasses(tok, x.capMassA,';');
   else return false;
 
   tok = strtok(NULL, " \t\n\r");
-  if (checkToken(tok)) x.capMassB = atof(tok);
+  if (checkToken(tok)) splitMasses(tok, x.capMassB,';');
   else return false;
 
   tok = strtok(NULL, " \t\n\r");
@@ -200,6 +200,7 @@ bool VingParameters::parseXLTable(char* str){
   else return false;
 
   xlTable.push_back(x);
+  return true;
 }
 
 void VingParameters::splitMasses(char*& c, vector<double>& v) {

@@ -15,8 +15,8 @@ typedef struct vingXL {
   std::string targetB;
   int id=0;
   double xlMass = 0;
-  double capMassA = 0;
-  double capMassB = 0;
+  std::vector<double> capMassA;
+  std::vector<double> capMassB;
   std::vector<vingStub> stubA;
   std::vector<vingStub> stubB;
   std::vector<double> reporterIons;
