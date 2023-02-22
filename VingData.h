@@ -33,6 +33,7 @@ typedef struct sMS3 {
   double stubMass;  //just the stub
   bool stubA;
   int charge;
+  int pos;          //site of crosslinker, relative to peptide (1-based)
   sMS3() {
     scan = 0;
     xcorr = 0;
@@ -42,6 +43,7 @@ typedef struct sMS3 {
     pepMass = 0;
     stubMass = 0;
     stubA=true;
+    pos=0;
   }
 } sMS3;
 
@@ -53,9 +55,11 @@ typedef struct sMod {
 
 
 typedef struct sMS2 {
+  size_t fileID;
   int scan;
   double mz;
   int charge;
+  int offset;
   double monoMZ;
   double calcNeutMass;
   double calcNeutMassG;
@@ -69,11 +73,14 @@ typedef struct sMS2 {
   eXLType type;
   std::vector<sMS3> ms3;
   std::vector<sMod> mods;
+  int posA;
+  int posB;
   sMS2() { clear(); }
   void clear() {
     scan = 0;
     mz = 0;
     charge = 0;
+    offset=0;
     monoMZ = 0;
     calcNeutMass = 0;
     calcNeutMassG=0;
@@ -83,6 +90,8 @@ typedef struct sMS2 {
     type = xlUnknown;
     ms3.clear();
     mods.clear();
+    posA=0;
+    posB=0;
   }
 } sMS2;
 
@@ -92,17 +101,28 @@ typedef struct sXLPep {
   double stub;
 } sXLPep;
 
+typedef struct sMzML {
+  std::string file;
+  std::string base;
+  std::string base_name;
+  std::string ext;
+  size_t startPos;
+} sMzML;
+
 class VingData {
 public:
   VingData(VingParameters* p);
   ~VingData();
 
   std::vector<sMS2> groups;
+  std::vector<sMzML> files;
 
   void assessXLType();
+  void exportProXL();
+  void exportResults2();
   bool importMS2SearchResults();
   bool importMS3SearchResults();
-  bool parseMzML();
+  size_t parseMzML(sMzML& fn, size_t id);
 
 private:
   VingParameters* params = NULL;
@@ -110,7 +130,13 @@ private:
   bool bMS2Prophet[2]={false};  //0=PeptideProphet, 1=iProphet
   bool bMS3Prophet[2]={false};
 
+  size_t maxMS3Count;
+  std::string dbName;
+
   static bool compareXL(sXLPep& a, sXLPep& b);
+
+  void exportProXLLinkers(FILE* f);
+  void exportProXLSearchProgramInfo(FILE* f);
 };
 
 #endif

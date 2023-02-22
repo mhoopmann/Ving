@@ -5,6 +5,7 @@ using namespace std;
 
 VingData::VingData(VingParameters* p){
   params=p;
+  maxMS3Count=0;
 }
 
 VingData::~VingData(){
@@ -99,6 +100,9 @@ void VingData::assessXLType() {
             groups[a].probability = groups[a].ms3[xl[b].index].prob;
             groups[a].calcNeutMassG= nm;
             groups[a].ppmG = (mm-nm)/nm*1e6;
+            groups[a].offset = io;
+            groups[a].posA=groups[a].ms3[xl[b].index].pos;
+            groups[a].posB=0;
           }
         }
 
@@ -108,6 +112,8 @@ void VingData::assessXLType() {
           double dif = mm - xm;
           
           //crosslinks that have the same probability as a different result take precedence.
+          // TODO
+          // alphabetize cross-linked peptides before storing them; this prevents confusion with duplications downstream
           if (fabs(dif) < ppm && groups[a].ms3[xl[b].index].prob* groups[a].ms3[xl[c].index].prob>=groups[a].probability*groups[a].probability) {
             groups[a].type = xlXL;
             groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
@@ -115,6 +121,9 @@ void VingData::assessXLType() {
             groups[a].probability= groups[a].ms3[xl[b].index].prob * groups[a].ms3[xl[c].index].prob;
             groups[a].calcNeutMassG = xm;
             groups[a].ppmG = (mm - xm) / xm * 1e6;
+            groups[a].offset=io;
+            groups[a].posA = groups[a].ms3[xl[b].index].pos;
+            groups[a].posB = groups[a].ms3[xl[c].index].pos;
           }
         }
       }
@@ -161,6 +170,224 @@ void VingData::assessXLType() {
 
 }
 
+void VingData::exportProXL(){
+
+  typedef struct sProXLPSM{
+    string scanFile;
+    int scanNumber;
+    int precursorCharge;
+    double probability;
+  } sProXLPSM;
+
+  typedef struct sProXL{
+    eXLType type;
+    string reportedPeptide;
+    string peptideA;
+    string peptideB;
+    int posA;
+    int posB;
+    vector<sProXLPSM> psm;
+  } sProXL;
+
+  vector<sProXL> v;
+  map<string,size_t> m;
+  size_t index;
+
+  for(size_t a=0;a<groups.size();a++){
+    if(groups[a].type==xlUnknown) continue;
+    if(groups[a].type==xlIncomplete) continue;
+    
+    sProXL p;
+    map<string,size_t>::iterator i=m.find(groups[a].sequence);
+    if(i==m.end()){
+      p.reportedPeptide=groups[a].sequence;
+      p.type=groups[a].type;
+      bool bFirst=true;
+      for(size_t b=0;b<p.reportedPeptide.size();b++){
+        if(p.reportedPeptide[b]>='A' && p.reportedPeptide[b]<='Z'){
+          if(bFirst) p.peptideA+=p.reportedPeptide[b];
+          else p.peptideB += p.reportedPeptide[b];
+        } else if(p.reportedPeptide[b]=='+') bFirst=false;
+      }
+      p.posA=groups[a].posA;
+      p.posB=groups[a].posB;
+      index=v.size();
+      v.push_back(p);
+      m.insert(pair<string,size_t>(p.reportedPeptide,index));
+    } else index=i->second;
+
+    sProXLPSM psm;
+    psm.scanFile=files[groups[a].fileID].base+ files[groups[a].fileID].ext;
+    psm.scanNumber=groups[a].scan;
+    psm.probability=groups[a].probability;
+    v[index].psm.push_back(psm);
+    
+  }
+
+  string outFile=params->output+".proxl.xml";
+  FILE* f = fopen(outFile.c_str(), "wt");
+
+  fprintf(f,"<?xml version=\"1.0\" encoding=\"UTF - 8\" standalone=\"yes\"?>\n");
+  fprintf(f,"<proxl_input fasta_filename = \"%s\">\n",dbName.c_str());
+
+  exportProXLSearchProgramInfo(f);
+  exportProXLLinkers(f);
+
+  fprintf(f," <reported_peptides>\n");
+  for(size_t a=0;a<v.size();a++){
+    fprintf(f, "  <reported_peptide reported_peptide_string=\"%s\" ",v[a].reportedPeptide.c_str());
+    if(v[a].type==xlXL) fprintf(f, " type=\"crosslink\">\n");
+    else fprintf(f, " type=\"single\">\n");
+    fprintf(f, "   <peptides>\n");
+    fprintf(f, "    <peptide sequence=\"%s\">\n",v[a].peptideA.c_str());
+    if(v[a].type==xlXL){
+      fprintf(f, "     <linked_positions>\n");
+      fprintf(f, "      <linked_position position=\"%d\">\n", v[a].posA);
+      fprintf(f, "     </linked_positions>\n");
+    }
+    fprintf(f, "    </peptide>\n");
+    if(!v[a].peptideB.empty()) {
+      fprintf(f, "    <peptide sequence=\"%s\">\n", v[a].peptideB.c_str());
+      fprintf(f, "     <linked_positions>\n");
+      fprintf(f, "      <linked_position position=\"%d\">\n",v[a].posB);
+      fprintf(f, "     </linked_positions>\n");
+      fprintf(f, "    </peptide>\n");
+    }
+    fprintf(f, "   </peptides>\n");
+    fprintf(f, "   <psms>\n");
+    for(size_t b=0;b<v[a].psm.size();b++){
+      fprintf(f,"    <psm scan_file_name=\"%s\" scan_number=\"%d\" precursor_charge=\"%d\">\n",v[a].psm[b].scanFile.c_str(),v[a].psm[b].scanNumber,v[a].psm[b].precursorCharge);
+      fprintf(f,"     <filterable_psm_annotations>\n");
+      fprintf(f,"      <filterable_psm_annotation search_program=\"iProphet\" annotation_name=\"IProphet Score\" value=\"%.4lf\"/>\n",v[a].psm[b].probability);
+      fprintf(f,"     </filterable_psm_annotations>\n");
+      fprintf(f,"    </psm>\n");
+    }
+    fprintf(f, "   </psms>\n");
+    fprintf(f, "  </reported_peptide>\n");
+  }
+  fprintf(f, " </reported_peptide>\n");
+  fprintf(f, "</proxl_input>\n");
+  fclose(f);
+}
+
+void VingData::exportProXLLinkers(FILE* f){
+  fprintf(f, " <linkers>\n");
+  fprintf(f, "  <linker name = \"DSSO\">\n");
+  fprintf(f, "   <monolink_masses>\n");
+  fprintf(f, "    <monolink_mass mass=\"176.014330\" />\n");
+  fprintf(f, "    <monolink_mass mass=\"279.077700\" />\n");
+  fprintf(f, "   </monolink_masses>\n");
+  fprintf(f, "   <crosslink_masses>\n");
+  fprintf(f, "    <crosslink_mass mass=\"158.003765\" />\n");
+  fprintf(f, "   </crosslink_masses>\n");
+  fprintf(f, "   <linked_ends>\n");
+  fprintf(f, "    <linked_end>\n");
+  fprintf(f, "     <residues>\n");
+  fprintf(f, "      <residue>K</residue>\n");
+  fprintf(f, "     </residues>\n");
+  fprintf(f, "     <protein_termini>\n");
+  fprintf(f, "      <protein_terminus terminus_end=\"n\" distance_from_terminus=\"0\" />\n");
+  fprintf(f, "      <protein_terminus terminus_end=\"n\" distance_from_terminus=\"1\" />\n");
+  fprintf(f, "     </protein_termini>\n");
+  fprintf(f, "    </linked_end>\n");
+  fprintf(f, "   </linked_ends>\n");
+  fprintf(f, "  </linker>\n");
+  fprintf(f, " </linkers>\n");
+}
+
+void VingData::exportProXLSearchProgramInfo(FILE* f){
+  fprintf(f, " <search_program_info>\n");
+  fprintf(f, "  <search_programs>\n");
+  fprintf(f, "   <search_program name=\"iProphet\" display_name=\"iProphet\" version=\"TPP v6.2.0 Parhelion - dev, Build 202208191617 - 8701 (Windows_NT - x86_64)\">\n");
+  fprintf(f, "    <psm_annotation_types>\n");
+  fprintf(f, "     <filterable_psm_annotation_types>\n");
+  fprintf(f, "      <filterable_psm_annotation_type name=\"IProphet Score\" description=\"iProphet Probability Score\" filter_direction=\"above\" default_filter=\"true\" default_filter_value=\"0.9\" />\n");
+  fprintf(f, "     </filterable_psm_annotation_types>\n");
+  fprintf(f, "    </psm_annotation_types>\n");
+  fprintf(f, "   </search_program>\n");
+  //fprintf(f, "   <search_program name=\"Ving\" display_name=\"Ving\" version=\"pfft...whatever\">\n");
+  //fprintf(f, "    <psm_annotation_types>\n");
+  //fprintf(f, "     <filterable_psm_annotation_types>\n");
+  //fprintf(f, "      <filterable_psm_annotation_type name=\"Score\" description=\"Ving Score\" filter_direction=\"above\" default_filter=\"false\" default_filter_value=\"0.9\" />\n");
+  //fprintf(f, "     </filterable_psm_annotation_types>\n");
+  //fprintf(f, "    </psm_annotation_types>\n");
+  //fprintf(f, "   </search_program>\n");
+  fprintf(f, "  </search_programs>\n");
+  fprintf(f, "  <default_visible_annotations>\n");
+  fprintf(f, "   <visible_psm_annotations>\n");
+  fprintf(f, "    <search_annotation search_program=\"iProphet\" annotation_name=\"IProphet Score\" />\n");
+  fprintf(f, "   </visible_psm_annotations>\n");
+  fprintf(f, "  </default_visible_annotations>\n");
+  fprintf(f, "  <annotation_sort_order>\n");
+  fprintf(f, "   <psm_annotation_sort_order>\n");
+  fprintf(f, "    <search_annotation search_program=\"iProphet\" annotation_name=\"IProphet Score\" />\n");
+  fprintf(f, "   </psm_annotation_sort_order>\n");
+  fprintf(f, "  </annotation_sort_order>\n");
+  fprintf(f, " </search_program_info>\n");
+}
+
+void VingData::exportResults2() {
+  FILE* f = fopen(params->output.c_str(), "wt");
+
+  //Massive Header
+  fprintf(f, "GroupID\tDesignation\tProbability\tMSFile\tMS2ScanNum\tMS2mz\tMS2charge\tMS2monoMass\tCalcNeutMass\tPPM\tIsotopeOffset\tSequence\tProtein(s)\tMS2Peptide\tMS2Protein\tMS2CalcNeutMass\tMS2Prob");
+  for (size_t a = 0; a < maxMS3Count; a++) {
+    fprintf(f, "\tMS3ScanNum-%d\tMS3mz\tMS3charge\tMS3selectedMass\tMS3Peptide\tMS3Protein\tMS3CalcNeutMass\tMS3Prob", (int)a + 1);
+  }
+  fprintf(f, "\n");
+
+  for (size_t a = 0; a < groups.size(); a++) {
+    fprintf(f, "%d", (int)a);
+    switch (groups[a].type) {
+    case xlDeadEnd: fprintf(f, "\tDeadEnd"); break;
+    case xlSingle: fprintf(f, "\tSingle"); break;
+    case xlLoop: fprintf(f, "\tLoop"); break;
+    case xlXL: fprintf(f, "\tXL"); break;
+    case xlIncomplete: fprintf(f, "\tIncomplete"); break;
+    default: fprintf(f, "\tUnknown"); break;
+    }
+    fprintf(f, "\t%.4lf", groups[a].probability);
+    fprintf(f,"\t%s",files[groups[a].fileID].base.c_str());
+    fprintf(f, "\t%d", groups[a].scan);
+    fprintf(f, "\t%.4lf", groups[a].mz);
+    fprintf(f, "\t%d", groups[a].charge);
+    fprintf(f, "\t%.4lf", groups[a].monoMZ * groups[a].charge - groups[a].charge * 1.007276466);
+    fprintf(f, "\t%.4lf", groups[a].calcNeutMassG);
+    fprintf(f, "\t%.2lf", groups[a].ppmG);
+    fprintf(f,"\t%d",groups[a].offset);
+    fprintf(f, "\t%s", groups[a].sequence.c_str());
+    fprintf(f, "\t%s", groups[a].proteinS.c_str());
+    if (!groups[a].peptide.empty()) {
+      fprintf(f, "\t%s", groups[a].peptide.c_str());
+      fprintf(f, "\t%s", groups[a].protein.c_str());
+      fprintf(f, "\t%.4lf", groups[a].calcNeutMass);
+      fprintf(f, "\t%.4lf", groups[a].probabilityMS2);
+    } else fprintf(f, "\tn/a\tn/a\t0\t0");
+
+    //And every MS3
+    size_t b = 0;
+    while (b < groups[a].ms3.size()) {
+      fprintf(f, "\t%d", groups[a].ms3[b].scan);
+      fprintf(f, "\t%.4lf", groups[a].ms3[b].mz);
+      fprintf(f, "\t%d", groups[a].ms3[b].charge);
+      fprintf(f, "\t%.4lf", groups[a].ms3[b].mz * groups[a].ms3[b].charge - groups[a].ms3[b].charge * 1.007276466);
+      fprintf(f, "\t%s", groups[a].ms3[b].peptide.c_str());
+      fprintf(f, "\t%s", groups[a].ms3[b].protein.c_str());
+      fprintf(f, "\t%.4lf", groups[a].ms3[b].pepMass);
+      fprintf(f, "\t%.4lf", groups[a].ms3[b].prob);
+      b++;
+    }
+    while (b < 4) { //blanks
+      fprintf(f, "\tn/a\t0\t0\t0\tn/a\tn/a\t0\t0");
+      b++;
+    }
+    fprintf(f, "\n");
+  }
+
+  fclose(f);
+
+}
+
 //Reads in PepXML from MS2 search results and assigns information to sMS2 objects
 bool VingData::importMS2SearchResults() {
   NeoPepXMLParser p;
@@ -183,33 +410,57 @@ bool VingData::importMS2SearchResults() {
     return false;
   }
 
-  size_t vp = 0;
+  for(size_t z=0;z<p.msms_pipeline_analysis[0].msms_run_summary.size();z++){
+    CnpxMSMSRunSummary* rs = &p.msms_pipeline_analysis[0].msms_run_summary[z];
+    sMzML mf;
+    size_t fileID=files.size();
+    size_t pos=rs->base_name.find_last_of('\\');
+    if(pos==string::npos) pos = rs->base_name.find_last_of('/');
+    if(pos==string::npos) pos=0;
+    if(pos>0) pos++;
+    mf.base=rs->base_name.substr(pos);
+    mf.ext=rs->raw_data;
+    mf.file=rs->base_name + rs->raw_data;
+    mf.base_name=rs->base_name;
+    files.push_back(mf);
 
-  for (size_t a = 0; a < p.msms_pipeline_analysis[0].msms_run_summary[0].spectrum_query.size(); a++) {
-    CnpxSpectrumQuery* sq = &p.msms_pipeline_analysis[0].msms_run_summary[0].spectrum_query[a];
-
-    char* tok;
-    char str[256];
-    strcpy(str, sq->spectrum.c_str());
-    tok = strtok(str, ".\n\r");
-    tok = strtok(NULL, ".\n\r");
-    int scan = atoi(tok);
-
-    while (vp < groups.size() && groups[vp].scan < scan) vp++;
-    if (groups[vp].scan != scan) {
-      cout << "No match to MS2: " << scan << endl;
-      continue;
+    if(dbName.empty()){
+      CnpxSearchSummary* ss=&rs->search_summary[0];
+      CnpxSearchDatabase* sd=&ss->search_database[0];
+      pos=sd->local_path.find_last_of('\\');
+      if (pos == string::npos) pos = sd->local_path.find_last_of('/');
+      if (pos == string::npos) pos = 0;
+      if (pos > 0) pos++;
+      dbName= sd->local_path.substr(pos);
     }
 
-    if (sq->search_result[0].search_hit.size() == 0) continue;
+    size_t vp = parseMzML(mf,fileID);
+  
+    for (size_t a = 0; a < rs->spectrum_query.size(); a++) {
+      CnpxSpectrumQuery* sq = &rs->spectrum_query[a];
 
-    CnpxSearchHit* sh = &sq->search_result[0].search_hit[0];
-    if (sh->modification_info.empty()) groups[vp].peptide = sh->peptide;
-    else groups[vp].peptide = sh->modification_info[0].modified_peptide;
+      char* tok;
+      char str[256];
+      strcpy(str, sq->spectrum.c_str());
+      tok = strtok(str, ".\n\r");
+      tok = strtok(NULL, ".\n\r");
+      int scan = atoi(tok);
 
-    groups[vp].protein = sh->protein;
-    groups[vp].charge = sq->assumed_charge;
-    groups[vp].calcNeutMass = sh->calc_neutral_pep_mass;
+      while (vp < groups.size() && groups[vp].scan < scan) vp++;
+      if (groups[vp].scan != scan) {
+        cout << "No match to MS2: " << scan << endl;
+        continue;
+      }
+
+      if (sq->search_result[0].search_hit.size() == 0) continue;
+
+      CnpxSearchHit* sh = &sq->search_result[0].search_hit[0];
+      if (sh->modification_info.empty()) groups[vp].peptide = sh->peptide;
+      else groups[vp].peptide = sh->modification_info[0].modified_peptide;
+
+      groups[vp].protein = sh->protein;
+      groups[vp].charge = sq->assumed_charge;
+      groups[vp].calcNeutMass = sh->calc_neutral_pep_mass;
 
     /*for (size_t b = 0; b < sh->search_score.size(); b++) {
       CnpxSearchScore* ss = &sh->search_score[b];
@@ -217,26 +468,27 @@ bool VingData::importMS2SearchResults() {
       if (ss->name.compare("expect") == 0) groups[vp].ms3[v3].eval = atof(ss->value.c_str());
     }*/
 
-    for (size_t b = 0; b < sh->analysis_result.size(); b++) {
-      if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
-        groups[vp].probabilityMS2 = sh->analysis_result[b].peptide_prophet_result.probability;
-      } else if (params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
-        groups[vp].probabilityMS2 = sh->analysis_result[b].interprophet_result.probability;
+      for (size_t b = 0; b < sh->analysis_result.size(); b++) {
+        if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
+          groups[vp].probabilityMS2 = sh->analysis_result[b].peptide_prophet_result.probability;
+        } else if (params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
+          groups[vp].probabilityMS2 = sh->analysis_result[b].interprophet_result.probability;
+        }
       }
-    }
 
-    //parse mods
-    if (!sh->modification_info.empty()) {
-      for (size_t b = 0; b < sh->modification_info[0].mod_aminoacid_mass.size(); b++) {
-        CnpxModAminoAcidMass* mam = &sh->modification_info[0].mod_aminoacid_mass[b];
-        sMod mod;
-        mod.aa = sh->peptide[mam->position - 1];
-        mod.pos = mam->position;
-        mod.mass = mam->variable;
-        groups[vp].mods.push_back(mod);
+      //parse mods
+      if (!sh->modification_info.empty()) {
+        for (size_t b = 0; b < sh->modification_info[0].mod_aminoacid_mass.size(); b++) {
+          CnpxModAminoAcidMass* mam = &sh->modification_info[0].mod_aminoacid_mass[b];
+          sMod mod;
+          mod.aa = sh->peptide[mam->position - 1];
+          mod.pos = mam->position;
+          mod.mass = mam->variable;
+          groups[vp].mods.push_back(mod);
+        }
       }
-    }
 
+    }
   }
   return true;
 }
@@ -265,90 +517,115 @@ bool VingData::importMS3SearchResults() {
   size_t vp = 0;
   size_t v3 = 0;
 
-  while (vp < groups.size() && groups[vp].ms3.size() == 0) vp++;
+  for (size_t z = 0; z < p.msms_pipeline_analysis[0].msms_run_summary.size(); z++) {
+    CnpxMSMSRunSummary* rs = &p.msms_pipeline_analysis[0].msms_run_summary[z];
 
-  for (size_t a = 0; a < p.msms_pipeline_analysis[0].msms_run_summary[0].spectrum_query.size(); a++) {
-    CnpxSpectrumQuery* sq = &p.msms_pipeline_analysis[0].msms_run_summary[0].spectrum_query[a];
+    size_t pos = rs->base_name.find_last_of('\\');
+    if (pos == string::npos) pos = rs->base_name.find_last_of('/');
+    if (pos == string::npos) pos = 0;
+    if (pos > 0) pos++;
+    string base = rs->base_name.substr(pos);
 
-    char* tok;
-    char str[256];
-    strcpy(str, sq->spectrum.c_str());
-    tok = strtok(str, ".\n\r");
-    tok = strtok(NULL, ".\n\r");
-    int scan = atoi(tok);
-
-    while (vp < groups.size() && groups[vp].ms3[v3].scan < scan) {
-      v3++;
-      if (v3 == groups[vp].ms3.size()) {
-        v3 = 0;
-        vp++;
-        while (vp < groups.size() && groups[vp].ms3.size() == 0) vp++;
-      }
+    size_t x;
+    for(x=0;x<files.size();x++){
+      if(files[x].base.compare(base)==0) break;
     }
-
-    if (groups[vp].ms3[v3].scan != scan) {
-      cout << "No match to " << scan << endl;
+    if(x==files.size()){
+      cout << "WARNING: " << base << " not in list of files analyzed. Skipping." << endl;
       continue;
     }
+    size_t fileID=x;
+    vp=files[fileID].startPos;
+    while (vp < groups.size() && groups[vp].ms3.size() == 0) vp++;
 
-    if (sq->search_result[0].search_hit.size() == 0) continue;
+    for (size_t a = 0; a < rs->spectrum_query.size(); a++) {
+      CnpxSpectrumQuery* sq = &rs->spectrum_query[a];
 
-    CnpxSearchHit* sh = &sq->search_result[0].search_hit[0];
-    if (sh->modification_info.empty()) groups[vp].ms3[v3].peptide = sh->peptide;
-    else groups[vp].ms3[v3].peptide = sh->modification_info[0].modified_peptide;
+      char* tok;
+      char str[256];
+      strcpy(str, sq->spectrum.c_str());
+      tok = strtok(str, ".\n\r");
+      tok = strtok(NULL, ".\n\r");
+      int scan = atoi(tok);
 
-    groups[vp].ms3[v3].protein = sh->protein;
-    groups[vp].ms3[v3].charge = sq->assumed_charge;
-    groups[vp].ms3[v3].pepMass = sh->calc_neutral_pep_mass;
-
-    for (size_t b = 0; b < sh->search_score.size(); b++) {
-      CnpxSearchScore* ss = &sh->search_score[b];
-      if (ss->name.compare("xcorr") == 0) groups[vp].ms3[v3].xcorr = atof(ss->value.c_str());
-      if (ss->name.compare("expect") == 0) groups[vp].ms3[v3].eval = atof(ss->value.c_str());
-    }
-
-    for (size_t b = 0; b < sh->analysis_result.size(); b++) {
-      if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
-        groups[vp].ms3[v3].prob = sh->analysis_result[b].peptide_prophet_result.probability;
-      } else if(params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
-        groups[vp].ms3[v3].prob = sh->analysis_result[b].interprophet_result.probability;
-      }
-    }
-
-    //check for stubs
-    if (!sh->modification_info.empty()) {
-      for (size_t b = 0; b < sh->modification_info[0].mod_aminoacid_mass.size(); b++) {
-        CnpxModAminoAcidMass* mam = &sh->modification_info[0].mod_aminoacid_mass[b];
-        char aa = sh->peptide[mam->position - 1];
-        if (params->crosslinker.targetA.find(aa) != string::npos) {
-          size_t c;
-          for (c = 0; c < params->crosslinker.stubA.size(); c++) {
-            if (fabs(params->crosslinker.stubA[c].mass - mam->variable) < 0.1) {
-              groups[vp].ms3[v3].stubMass = params->crosslinker.stubA[c].mass;
-              groups[vp].ms3[v3].stubA = true;
-              break;
-            } else if (fabs(params->crosslinker.stubA[c].mass + params->crosslinker.stubA[c].reaction - mam->variable) < 0.1) {
-              groups[vp].ms3[v3].stubMass = params->crosslinker.stubA[c].mass + params->crosslinker.stubA[c].reaction;
-              groups[vp].ms3[v3].stubA = true;
-              break;
-            }
-          }
-          if (c < params->crosslinker.stubA.size()) break;
+      while (vp < groups.size() && groups[vp].ms3[v3].scan < scan) {
+        v3++;
+        if (v3 == groups[vp].ms3.size()) {
+          v3 = 0;
+          vp++;
+          while (vp < groups.size() && groups[vp].ms3.size() == 0) vp++;
         }
-        if (params->crosslinker.targetB.find(aa) != string::npos) {
-          size_t c;
-          for (c = 0; c < params->crosslinker.stubB.size(); c++) {
-            if (fabs(params->crosslinker.stubB[c].mass - mam->variable) < 0.1) {
-              groups[vp].ms3[v3].stubMass = params->crosslinker.stubB[c].mass;
-              groups[vp].ms3[v3].stubA = false;
-              break;
-            } else if (fabs(params->crosslinker.stubB[c].mass + params->crosslinker.stubB[c].reaction - mam->variable) < 0.1) {
-              groups[vp].ms3[v3].stubMass = params->crosslinker.stubB[c].mass + params->crosslinker.stubB[c].reaction;
-              groups[vp].ms3[v3].stubA = false;
-              break;
+      }
+
+      if (groups[vp].ms3[v3].scan != scan) {
+        cout << "No match to " << scan << endl;
+        continue;
+      }
+
+      if (sq->search_result[0].search_hit.size() == 0) continue;
+
+      CnpxSearchHit* sh = &sq->search_result[0].search_hit[0];
+      if (sh->modification_info.empty()) groups[vp].ms3[v3].peptide = sh->peptide;
+      else groups[vp].ms3[v3].peptide = sh->modification_info[0].modified_peptide;
+
+      groups[vp].ms3[v3].protein = sh->protein;
+      groups[vp].ms3[v3].charge = sq->assumed_charge;
+      groups[vp].ms3[v3].pepMass = sh->calc_neutral_pep_mass;
+
+      for (size_t b = 0; b < sh->search_score.size(); b++) {
+        CnpxSearchScore* ss = &sh->search_score[b];
+        if (ss->name.compare("xcorr") == 0) groups[vp].ms3[v3].xcorr = atof(ss->value.c_str());
+        if (ss->name.compare("expect") == 0) groups[vp].ms3[v3].eval = atof(ss->value.c_str());
+      }
+
+      for (size_t b = 0; b < sh->analysis_result.size(); b++) {
+        if (!params->probabilityType && sh->analysis_result[b].analysis.compare("peptideprophet") == 0) {
+          groups[vp].ms3[v3].prob = sh->analysis_result[b].peptide_prophet_result.probability;
+        } else if(params->probabilityType && sh->analysis_result[b].analysis.compare("interprophet") == 0) {
+          groups[vp].ms3[v3].prob = sh->analysis_result[b].interprophet_result.probability;
+        }
+      }
+
+      //check for stubs
+      //TODO: track site of stubs for inferring link positions.
+      if (!sh->modification_info.empty()) {
+        for (size_t b = 0; b < sh->modification_info[0].mod_aminoacid_mass.size(); b++) {
+          CnpxModAminoAcidMass* mam = &sh->modification_info[0].mod_aminoacid_mass[b];
+          char aa = sh->peptide[mam->position - 1];
+          if (params->crosslinker.targetA.find(aa) != string::npos) {
+            size_t c;
+            for (c = 0; c < params->crosslinker.stubA.size(); c++) {
+              if (fabs(params->crosslinker.stubA[c].mass - mam->variable) < 0.1) {
+                groups[vp].ms3[v3].stubMass = params->crosslinker.stubA[c].mass;
+                groups[vp].ms3[v3].stubA = true;
+                groups[vp].ms3[v3].pos=mam->position;
+                break;
+              } else if (fabs(params->crosslinker.stubA[c].mass + params->crosslinker.stubA[c].reaction - mam->variable) < 0.1) {
+                groups[vp].ms3[v3].stubMass = params->crosslinker.stubA[c].mass + params->crosslinker.stubA[c].reaction;
+                groups[vp].ms3[v3].stubA = true;
+                groups[vp].ms3[v3].pos = mam->position;
+                break;
+              }
             }
+            if (c < params->crosslinker.stubA.size()) break;
           }
-          if (c < params->crosslinker.stubB.size()) break;
+          if (params->crosslinker.targetB.find(aa) != string::npos) {
+            size_t c;
+            for (c = 0; c < params->crosslinker.stubB.size(); c++) {
+              if (fabs(params->crosslinker.stubB[c].mass - mam->variable) < 0.1) {
+                groups[vp].ms3[v3].stubMass = params->crosslinker.stubB[c].mass;
+                groups[vp].ms3[v3].stubA = false;
+                groups[vp].ms3[v3].pos = mam->position;
+                break;
+              } else if (fabs(params->crosslinker.stubB[c].mass + params->crosslinker.stubB[c].reaction - mam->variable) < 0.1) {
+                groups[vp].ms3[v3].stubMass = params->crosslinker.stubB[c].mass + params->crosslinker.stubB[c].reaction;
+                groups[vp].ms3[v3].stubA = false;
+                groups[vp].ms3[v3].pos = mam->position;
+                break;
+              }
+            }
+            if (c < params->crosslinker.stubB.size()) break;
+          }
         }
       }
     }
@@ -356,7 +633,7 @@ bool VingData::importMS3SearchResults() {
   return true;
 }
 
-bool VingData::parseMzML(){
+size_t VingData::parseMzML(sMzML& fn, size_t id){
   MSReader r;
   Spectrum s;
 
@@ -367,10 +644,14 @@ bool VingData::parseMzML(){
   vector<sMS2> cycle;
   bool bMS2 = false;
 
-  groups.clear();
+  size_t start_pos=groups.size();
 
-  cout << "Reading: " << params->mzML << " ... ";
-  if(!r.readFile(params->mzML.c_str(), s)) return false;
+  cout << "Reading: " << fn.file << " ... ";
+  if(!r.readFile(fn.file.c_str(), s)){
+    string st=fn.base+fn.ext;
+    cout << " Not found, attempting CWD: " << st << " ... ";
+    if (!r.readFile(st.c_str(), s)) return SIZE_MAX;
+  }
     
   //Set progress meter
   int lastScan=r.getLastScan();
@@ -378,11 +659,17 @@ bool VingData::parseMzML(){
   printf("%2d%%", iPercent);
   fflush(stdout);
 
+  int count=0;
   while (s.getScanNumber() > 0) {
 
     if (s.getMsLevel() == 1) {
       for (size_t a = 0; a < cycle.size(); a++) {
-        if (bMS2) groups.push_back(cycle[a]);
+        if (bMS2) {
+          cycle[a].fileID=id;
+          groups.push_back(cycle[a]);
+          if(cycle[a].ms3.size()>maxMS3Count)maxMS3Count=cycle[a].ms3.size();
+          count++;
+        }
       }
       cycle.clear();
       bMS2 = false;
@@ -439,11 +726,18 @@ bool VingData::parseMzML(){
   cout << endl;
 
   for (size_t a = 0; a < cycle.size(); a++) {
-    if (bMS2) groups.push_back(cycle[a]);
+    if (bMS2) {
+      cycle[a].fileID=id;
+      groups.push_back(cycle[a]);
+      if (cycle[a].ms3.size() > maxMS3Count)maxMS3Count = cycle[a].ms3.size();
+      count++;
+    }
   }
 
+  cout << count << " new groups." << endl;
   cout << groups.size() << " total groups." << endl;
-  return true;
+  files[id].startPos=start_pos;
+  return start_pos;
 }
 
 bool VingData::compareXL(sXLPep& a, sXLPep& b) {

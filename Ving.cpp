@@ -9,8 +9,8 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "Feb 7 2023"
-#define VERSION "0.7.5"
+#define BDATE "Feb 8 2023"
+#define VERSION "0.7.6"
 
 bool cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);
@@ -34,12 +34,14 @@ int main(int argc, char* argv[]){
   }
 
   VingData data(&params);
-  data.parseMzML();
+  //data.parseMzML();
   data.importMS2SearchResults();
   data.importMS3SearchResults();
   data.assessXLType();
 
-  exportResults2(params.output.c_str(),data.groups);
+  data.exportResults2();
+  data.exportProXL();
+  //exportResults2(params.output.c_str(),data.groups);
 
   return 0;
 }
