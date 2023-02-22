@@ -7,6 +7,7 @@
 #include "NeoPepXMLParser.h"
 
 #include <algorithm>
+#include <cmath>
 
 #define ISOTOPE_OFFSET 1.003354835
 #define PROTON 1.007276466

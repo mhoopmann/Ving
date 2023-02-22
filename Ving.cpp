@@ -9,10 +9,10 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "Feb 8 2023"
-#define VERSION "0.7.6"
+#define BDATE "Feb 22 2023"
+#define VERSION "0.7.7"
 
-bool cmdLine(int argc, char* argv[]);
+int cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);
 void marquee();
 void usage();
@@ -23,10 +23,11 @@ VingParameters params;
 int main(int argc, char* argv[]){
 
   marquee();
-  if(!cmdLine(argc,argv)){
+  int ret=cmdLine(argc,argv);
+  if(ret==1){
     usage();
     return 1;
-  }
+  } else if(ret==2) return 0;
 
   if(!params.parse(g_param.c_str())){
     cout << "Cannot read params file, or file contains bad parameters." << endl;
@@ -46,10 +47,16 @@ int main(int argc, char* argv[]){
   return 0;
 }
 
-bool cmdLine(int argc, char* argv[]){
-  if(argc!=2) return false;
+int cmdLine(int argc, char* argv[]){
+  if(argc!=2) return 1;
+  if (strcmp(argv[1], "--config") == 0) {
+    VingParameters p;
+    p.exportDefault(VERSION);
+    cout << "\nving_default_params.conf file created." << endl;
+    return 2;
+  }
   g_param=argv[1];
-  return true;
+  return 0;
 }
 
 void exportResults2(const char* fn, vector<sMS2>& v){
@@ -120,8 +127,7 @@ void marquee() {
 }
 
 void usage(){
-  cout << "\nUSAGE: Ving.exe <mzML> <MS2 PepXML> <MS3 PepXML> <outfile>" << endl;
-  cout << "  mzML = mzML file of the spectra analyzed." << endl;
-  cout << "  PepXML = PepXML of the MS2 or MS3 scan database search results with PeptideProphet analysis." << endl;
-  cout << "  outfile = desired output file name." << endl;
+  cout << "\nUSAGE: ving <configuration file>" << endl;
+  cout << "Note: To create a default configuration file, run the following command:" << endl;
+  cout << "  ving --config" << endl;
 }

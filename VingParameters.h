@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <cstring>
 
 typedef struct vingStub{
   double mass=0;
@@ -25,6 +26,7 @@ typedef struct vingXL {
 class VingParameters {
 public:
 
+  void exportDefault(std::string ver);
   bool parse(const char* fn);
 
   vingXL crosslinker;
