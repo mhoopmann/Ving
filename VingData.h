@@ -45,6 +45,7 @@ typedef struct sMS3 {
     stubMass = 0;
     stubA=true;
     pos=0;
+    prob=0;
   }
 } sMS3;
 
@@ -56,43 +57,47 @@ typedef struct sMod {
 
 
 typedef struct sMS2 {
-  size_t fileID;
-  int scan;
-  double mz;
-  int charge;
-  int offset;
-  double monoMZ;
-  double calcNeutMass;
-  double calcNeutMassG;
-  double ppmG;
-  double probability;
-  double probabilityMS2;
+  size_t fileID=0;
+  int scan=0;
+  double mz=0;
+  int charge=0;
+  int offset=0;
+  double monoMZ=0;
+  double calcNeutMass=0;
+  double calcNeutMassG=0;
+  double ppmG=0;
+  int posA=0;
+  int posB=0;
+  double probability=0;
+  double probabilityMS2=0;
+  eXLType type=xlUnknown;
   std::string peptide;
   std::string sequence;
   std::string protein;
   std::string proteinS;
-  eXLType type;
   std::vector<sMS3> ms3;
   std::vector<sMod> mods;
-  int posA;
-  int posB;
-  sMS2() { clear(); }
   void clear() {
+    fileID = 0;
     scan = 0;
     mz = 0;
     charge = 0;
-    offset=0;
+    offset = 0;
     monoMZ = 0;
     calcNeutMass = 0;
-    calcNeutMassG=0;
-    ppmG=0;
+    calcNeutMassG = 0;
+    ppmG = 0;
+    posA = 0;
+    posB = 0;
     probability = 0;
     probabilityMS2 = 0;
     type = xlUnknown;
     ms3.clear();
     mods.clear();
-    posA=0;
-    posB=0;
+    peptide.clear();
+    sequence.clear();
+    protein.clear();
+    proteinS.clear();
   }
 } sMS2;
 

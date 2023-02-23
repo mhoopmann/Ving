@@ -548,6 +548,7 @@ bool VingData::importMS3SearchResults() {
       tok = strtok(NULL, ".\n\r");
       int scan = atoi(tok);
 
+      v3=0;
       while (vp < groups.size() && groups[vp].ms3[v3].scan < scan) {
         v3++;
         if (v3 == groups[vp].ms3.size()) {
@@ -558,7 +559,13 @@ bool VingData::importMS3SearchResults() {
       }
 
       if (groups[vp].ms3[v3].scan != scan) {
-        cout << "No match to " << scan << endl;
+        cout << "No match to MS3 " << scan << " in " << files[fileID].base_name << "\t" << files[fileID].base << endl;
+        cout << "v3=" << v3 << "\t" << "scan=" << groups[vp].ms3[v3].scan << "\t" << "size=" << groups[vp].ms3.size() << endl;
+        cout << vp << " of " << groups.size() << " has fID: " << groups[vp].fileID << "\t" << fileID << "\t" << groups[vp].scan << endl;
+        for(size_t b=0;b<groups[vp].ms3.size();b++){
+          cout << " " << b << " " << groups[vp].ms3[b].scan << endl;
+        }
+
         continue;
       }
 
@@ -737,6 +744,13 @@ size_t VingData::parseMzML(sMzML& fn, size_t id){
   cout << count << " new groups." << endl;
   cout << groups.size() << " total groups." << endl;
   files[id].startPos=start_pos;
+
+  //Diagnostics only
+  //for(size_t a=start_pos;a<groups.size(); a++ ){
+  //  cout << "New " << id << "\t" << groups[a].scan;
+  //  for(size_t b=0;b<groups[a].ms3.size();b++) cout << "\t" << groups[a].ms3[b].scan;
+  //  cout << endl;
+  //}
   return start_pos;
 }
 
