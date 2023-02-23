@@ -86,6 +86,7 @@ void VingData::assessXLType() {
         //TODO: Revise this, perhaps. Maybe check for XL first. Then alternately check for all possible dead-end possibilities.
         for(size_t d=0;d<vc->size();d++){
           nm=(pm+params->crosslinker.xlMass+vc->at(d));
+
           double dif = mm-nm - io * ISOTOPE_OFFSET;
 
           //change this to check for the remaining mass of a dead-end
