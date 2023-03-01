@@ -9,8 +9,8 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "Feb 23 2023"
-#define VERSION "0.7.8"
+#define BDATE "March 1 2023"
+#define VERSION "0.7.10"
 
 int cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);

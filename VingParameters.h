@@ -34,6 +34,7 @@ public:
   std::string ms2SearchResult;
   std::string ms3SearchResult;
   std::string output;
+  double ppmTolerance=10.0;
   bool probabilityType=false;
 
 private:

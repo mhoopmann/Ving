@@ -20,7 +20,7 @@ void VingData::assessXLType() {
     double mm;
     if (groups[a].monoMZ > 0) mm = groups[a].monoMZ * groups[a].charge - PROTON * groups[a].charge;
     else mm = groups[a].mz * groups[a].charge - PROTON * groups[a].charge;
-    double ppm = mm / 1e6 * 10;
+    double ppm = mm / 1e6 * params->ppmTolerance;
 
     //Single peptides are defined by high probability after MS2 searching.
     if (groups[a].probabilityMS2 > groups[a].probability) {
@@ -75,7 +75,7 @@ void VingData::assessXLType() {
     sort(xl.begin(), xl.end(), compareXL);
 
     double pm = 0;
-    for(int io=0;io<=1;io++){ //check all isotope errors
+    for(int io=-1;io<=1;io++){ //check all isotope errors
       for (size_t b = 0; b < xl.size(); b++) { //check all MS3 peptides
         pm = xl[b].mass;
         double nm;
@@ -92,6 +92,8 @@ void VingData::assessXLType() {
           //change this to check for the remaining mass of a dead-end
           bool bDE = false;
           if (fabs(dif) < ppm) bDE = true;
+
+          //if (a == 193) cout << a << "\t" << nm << "\t" << dif << "\t" << io << "\t" << bDE << "\tp:" << groups[a].probability << "\t" << ppm << endl;
 
           //Dead-end has a mass difference of a long or short arm.
           if (bDE && groups[a].ms3[xl[b].index].prob>groups[a].probability) {
@@ -111,6 +113,8 @@ void VingData::assessXLType() {
         for (size_t c = b + 1; c < xl.size(); c++) { //check all combinations with other MS3 peptides
           double xm = xl[b].mass + xl[c].mass + params->crosslinker.xlMass - io * ISOTOPE_OFFSET;
           double dif = mm - xm;
+
+          //if(a==867) cout << c << "\t" << xm << "\t" << dif << "\t" << io << endl;
           
           //crosslinks that have the same probability as a different result take precedence.
           // TODO
@@ -333,7 +337,7 @@ void VingData::exportResults2() {
   //Massive Header
   fprintf(f, "GroupID\tDesignation\tProbability\tMSFile\tMS2ScanNum\tMS2mz\tMS2charge\tMS2monoMass\tCalcNeutMass\tPPM\tIsotopeOffset\tSequence\tProtein(s)\tMS2Peptide\tMS2Protein\tMS2CalcNeutMass\tMS2Prob");
   for (size_t a = 0; a < maxMS3Count; a++) {
-    fprintf(f, "\tMS3ScanNum-%d\tMS3mz\tMS3charge\tMS3selectedMass\tMS3Peptide\tMS3Protein\tMS3CalcNeutMass\tMS3Prob", (int)a + 1);
+    fprintf(f, "\tMS3ScanNum-%d\tMS3mz\tMS3charge\tMS3selectedMass\tMS3Peptide\tMS3Protein\tMS3CalcNeutMass\tMS3PepMass\tMS3Prob", (int)a + 1);
   }
   fprintf(f, "\n");
 
@@ -375,11 +379,12 @@ void VingData::exportResults2() {
       fprintf(f, "\t%s", groups[a].ms3[b].peptide.c_str());
       fprintf(f, "\t%s", groups[a].ms3[b].protein.c_str());
       fprintf(f, "\t%.4lf", groups[a].ms3[b].pepMass);
+      fprintf(f, "\t%.4lf", groups[a].ms3[b].pepMass-groups[a].ms3[b].stubMass);
       fprintf(f, "\t%.4lf", groups[a].ms3[b].prob);
       b++;
     }
-    while (b < 4) { //blanks
-      fprintf(f, "\tn/a\t0\t0\t0\tn/a\tn/a\t0\t0");
+    while (b < maxMS3Count) { //blanks
+      fprintf(f, "\tn/a\t0\t0\t0\tn/a\tn/a\t0\t0\t0");
       b++;
     }
     fprintf(f, "\n");
