@@ -42,7 +42,7 @@ void VingParameters::exportDefault(string ver){
   fprintf(f, "output_name = ving_results.txt\n");
   fprintf(f, "\n");
   fprintf(f, "probability_type = 1  #0 = PeptideProphet, 1 = iProphet\n");
-  fprintf(f, "ppm_tolerance = 20.0  #in ppm, default=10.0\n");
+  fprintf(f, "ppm_tolerance = 20.0  #parent ion mass tolerance, in ppm, default=10.0\n");
 
   fclose(f);
 }

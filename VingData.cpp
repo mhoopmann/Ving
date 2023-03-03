@@ -12,6 +12,115 @@ VingData::~VingData(){
   params=NULL;
 }
 
+void VingData::assessIncomplete(string massList, string protein){
+  vector<sPepMass> v;
+  char str[1024];
+  char* tok;
+  FILE* f=fopen(massList.c_str(),"rt");
+  while(!feof(f)){
+    if(fgets(str,1024,f)==NULL) continue;
+    if(strlen(str)<2) continue;
+    sPepMass pm;
+    tok=strtok(str," \t\n\r");
+    pm.peptide=tok;
+    tok=strtok(NULL, " \t\n\r");
+    pm.z=atoi(tok);
+    tok = strtok(NULL, " \t\n\r");
+    pm.monoMass=atof(tok);
+    tok = strtok(NULL, " \t\n\r");
+    while(tok!=NULL){
+      pm.mz=atof(tok);
+      v.push_back(pm);
+      tok = strtok(NULL, " \t\n\r");
+    }
+  }
+  fclose(f);
+  sort(v.begin(),v.end(),compareMZ);
+
+  int iCount=0;
+  int mCount=0;
+  for(size_t a=0;a<groups.size();a++){
+    if(groups[a].type!=xlIncomplete) continue;
+    if(groups[a].probability<0.9) continue;
+    if(!protein.empty()){  //skip groups that have no peptide IDs to our protein of interest
+      size_t b;
+      for(b=0;b<groups[a].ms3.size();b++){
+        if(groups[a].ms3[b].protein.find(protein)!=string::npos) break;
+      }
+      if(b==groups[a].ms3.size()) continue;
+    }
+
+    //Output basic information
+    iCount++;
+    double mm = groups[a].monoMZ * groups[a].charge - groups[a].charge* PROTON;
+    cout << files[groups[a].fileID].base << "\t" << groups[a].scan << "\t" << groups[a].monoMZ << "\t" << groups[a].charge << "\t" << mm << endl;
+
+    //Read in spectrum
+    MSReader r;
+    Spectrum s;
+    string file= files[groups[a].fileID].base+files[groups[a].fileID].ext;
+    r.setFilter(MS2);
+    r.readFile(file.c_str(),s,groups[a].scan);
+
+    int sPos=0;
+    size_t aPos=0;
+    vector<sPepMass> match;
+    while(sPos<s.size() && aPos<v.size()){
+      double ppm=s[sPos].mz/1e5; //10 ppm tolerance
+      while(aPos<v.size() && v[aPos].mz<s[sPos].mz-ppm) aPos++;
+      if(aPos==v.size()) break;
+      while(aPos<v.size() && v[aPos].mz<s[sPos].mz+ppm) {
+        //cout << "  Peptide Match: " << v[aPos].peptide << "\t" << v[aPos].z << "\t" << v[aPos].mz << " vs. " << s[sPos].mz << endl;
+        match.push_back(v[aPos]);
+        match.back().matchMZ=s[sPos].mz;
+        aPos++;
+      }
+      sPos++;
+    }
+
+    //Export any selected peaks
+    for (size_t b = 0; b < groups[a].ms3.size(); b++) {
+      cout << "  Selected Peak: " << groups[a].ms3[b].mz;
+      if (!groups[a].ms3[b].peptide.empty()) cout << "\t" << groups[a].ms3[b].peptide << "\t" << groups[a].ms3[b].prob;
+      cout << endl;
+    }
+
+    if(match.size()<2) continue;
+    
+    //get peak rank of matches
+    s.sortIntensityRev();
+    for(size_t b=0;b<match.size();b++){
+      int c;
+      for(c=0;c<s.size();c++){
+        if(fabs(match[b].matchMZ-s[c].mz)<0.0001) {
+          cout << "  Peptide Match: " << match[b].peptide << "\t" << match[b].z << "\t" << match[b].mz << " vs. " << match[b].matchMZ << "\t" << c+1 << endl;
+          break;
+        }
+      }
+      if(c==s.size()) cout << "  Error: cannot find matched peak." << endl;
+    }
+
+    //iterate matches for crosslink
+    //cout << "  Checking matches" << endl;
+    bool bMatch=false;
+    for(size_t b=0;b<match.size()-1;b++){
+      for(size_t c=b+1;c<match.size();c++){
+        double dif=mm-match[b].monoMass-match[c].monoMass- params->crosslinker.xlMass;
+        if(fabs(dif)<2){
+          if(!bMatch){
+            bMatch=true;
+            mCount++;
+          }
+          cout << "    Candidate XL: " << match[b].peptide << " + " << match[c].peptide << "\t" << match[b].monoMass + match[c].monoMass + params->crosslinker.xlMass << "\t" << dif << endl;
+        }
+      }
+    }
+  }
+
+  cout << mCount << " of " << iCount << " incomplete results are plausible crosslinks." << endl;
+
+}
+
 void VingData::assessXLType() {
   for (size_t a = 0; a < groups.size(); a++) {
 
@@ -25,6 +134,7 @@ void VingData::assessXLType() {
     //Single peptides are defined by high probability after MS2 searching.
     if (groups[a].probabilityMS2 > groups[a].probability) {
       groups[a].type = xlSingle;
+      groups[a].xlMass=0;
       groups[a].sequence = groups[a].peptide;
       groups[a].proteinS = groups[a].protein;
       groups[a].probability= groups[a].probabilityMS2;
@@ -35,6 +145,7 @@ void VingData::assessXLType() {
           for(size_t c=0;c<params->crosslinker.capMassA.size();c++){
             if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassA[c])) < ppm) {
               groups[a].type = xlDeadEnd; //generally make deadends known here
+              groups[a].xlMass = params->crosslinker.xlMass + params->crosslinker.capMassA[c];
               break;
             }
           }
@@ -43,6 +154,7 @@ void VingData::assessXLType() {
           for (size_t c = 0; c < params->crosslinker.capMassB.size(); c++) {
               if (fabs(groups[a].mods[b].mass - (params->crosslinker.xlMass + params->crosslinker.capMassB[c])) < ppm) {
               groups[a].type = xlDeadEnd; //generally make deadends known here
+              groups[a].xlMass = params->crosslinker.xlMass + params->crosslinker.capMassB[c];
               break;
             }
           }
@@ -106,6 +218,7 @@ void VingData::assessXLType() {
             groups[a].offset = io;
             groups[a].posA=groups[a].ms3[xl[b].index].pos;
             groups[a].posB=0;
+            groups[a].xlMass= params->crosslinker.xlMass + vc->at(d);
           }
         }
 
@@ -129,6 +242,7 @@ void VingData::assessXLType() {
             groups[a].offset=io;
             groups[a].posA = groups[a].ms3[xl[b].index].pos;
             groups[a].posB = groups[a].ms3[xl[c].index].pos;
+            groups[a].xlMass = params->crosslinker.xlMass;
           }
         }
       }
@@ -136,6 +250,7 @@ void VingData::assessXLType() {
 
     //Check to see if there are partial results if nothing found by this point.
     if (groups[a].type==xlUnknown) {
+      groups[a].xlMass=0;
       for (size_t b = 0; b < groups[a].ms3.size(); b++) {
         if (groups[a].ms3[b].prob < groups[a].probability) continue;
 
@@ -335,7 +450,7 @@ void VingData::exportResults2() {
   FILE* f = fopen(params->output.c_str(), "wt");
 
   //Massive Header
-  fprintf(f, "GroupID\tDesignation\tProbability\tMSFile\tMS2ScanNum\tMS2mz\tMS2charge\tMS2monoMass\tCalcNeutMass\tPPM\tIsotopeOffset\tSequence\tProtein(s)\tMS2Peptide\tMS2Protein\tMS2CalcNeutMass\tMS2Prob");
+  fprintf(f, "GroupID\tDesignation\tProbability\tMSFile\tMS2ScanNum\tMS2mz\tMS2charge\tMS2monoMass\tCalcNeutMass\tPPM\tIsotopeOffset\tXL_Mass\tSequence\tProtein(s)\tMS2Peptide\tMS2Protein\tMS2CalcNeutMass\tMS2Prob");
   for (size_t a = 0; a < maxMS3Count; a++) {
     fprintf(f, "\tMS3ScanNum-%d\tMS3mz\tMS3charge\tMS3selectedMass\tMS3Peptide\tMS3Protein\tMS3CalcNeutMass\tMS3PepMass\tMS3Prob", (int)a + 1);
   }
@@ -360,6 +475,7 @@ void VingData::exportResults2() {
     fprintf(f, "\t%.4lf", groups[a].calcNeutMassG);
     fprintf(f, "\t%.2lf", groups[a].ppmG);
     fprintf(f,"\t%d",groups[a].offset);
+    fprintf(f,"\t%.4lf", groups[a].xlMass);
     fprintf(f, "\t%s", groups[a].sequence.c_str());
     fprintf(f, "\t%s", groups[a].proteinS.c_str());
     if (!groups[a].peptide.empty()) {
@@ -762,4 +878,8 @@ size_t VingData::parseMzML(sMzML& fn, size_t id){
 
 bool VingData::compareXL(sXLPep& a, sXLPep& b) {
   return a.mass > b.mass;
+}
+
+bool VingData::compareMZ(sPepMass& a, sPepMass& b) {
+  return a.mz < b.mz;
 }

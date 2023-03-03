@@ -70,6 +70,7 @@ typedef struct sMS2 {
   int posB=0;
   double probability=0;
   double probabilityMS2=0;
+  double xlMass=0; //additional mass from the crosslinker. For deadends, includes the partially reacted reagent
   eXLType type=xlUnknown;
   std::string peptide;
   std::string sequence;
@@ -91,6 +92,7 @@ typedef struct sMS2 {
     posB = 0;
     probability = 0;
     probabilityMS2 = 0;
+    xlMass=0;
     type = xlUnknown;
     ms3.clear();
     mods.clear();
@@ -115,6 +117,14 @@ typedef struct sMzML {
   size_t startPos;
 } sMzML;
 
+typedef struct sPepMass{
+  std::string peptide;
+  double monoMass=0;
+  double mz=0;
+  int z=0;
+  double matchMZ=0;
+} sPepMass;
+
 class VingData {
 public:
   VingData(VingParameters* p);
@@ -123,6 +133,7 @@ public:
   std::vector<sMS2> groups;
   std::vector<sMzML> files;
 
+  void assessIncomplete(std::string massList, std::string protein="");
   void assessXLType();
   void exportProXL();
   void exportResults2();
@@ -140,6 +151,7 @@ private:
   std::string dbName;
 
   static bool compareXL(sXLPep& a, sXLPep& b);
+  static bool compareMZ(sPepMass& a, sPepMass& b);
 
   void exportProXLLinkers(FILE* f);
   void exportProXLSearchProgramInfo(FILE* f);

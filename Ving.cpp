@@ -9,8 +9,8 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "March 1 2023"
-#define VERSION "0.7.10"
+#define BDATE "March 3 2023"
+#define VERSION "0.7.12"
 
 int cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);
@@ -39,6 +39,7 @@ int main(int argc, char* argv[]){
   data.importMS2SearchResults();
   data.importMS3SearchResults();
   data.assessXLType();
+  //data.assessIncomplete("masslist.txt", "P02769");
 
   data.exportResults2();
   data.exportProXL();
