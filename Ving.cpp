@@ -9,8 +9,8 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "March 3 2023"
-#define VERSION "0.7.12"
+#define BDATE "May 25 2023"
+#define VERSION "0.8.0"
 
 int cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);
@@ -43,6 +43,7 @@ int main(int argc, char* argv[]){
 
   data.exportResults2();
   data.exportProXL();
+  data.exportJSON();
   //exportResults2(params.output.c_str(),data.groups);
 
   return 0;
@@ -66,7 +67,7 @@ void exportResults2(const char* fn, vector<sMS2>& v){
   //Massive Header
   fprintf(f, "GroupID\tDesignation\tProbability\tMS2ScanNum\tMS2mz\tMS2charge\tMS2monoMass\tCalcNeutMass\tPPM\tSequence\tProtein(s)\tMS2Peptide\tMS2Protein\tMS2CalcNeutMass\tMS2Prob");
   for(size_t a=0;a<4;a++){
-    fprintf(f,"\tMS3ScanNum-%d\tMS3mz\tMS3charge\tMS3selectedMass\tMS3Peptide\tMS3Protein\tMS3CalcNeutMass\tMS3Prob",(int)a+1);
+    fprintf(f,"\tMS3ScanNum-%d\tMS3mz-%d\tMS3charge-%d\tMS3selectedMass-%d\tMS3Peptide-%d\tMS3Protein-%d\tMS3CalcNeutMass-%d\tMS3Prob-%d",(int)(a+1), (int)(a + 1), (int)(a + 1), (int)(a + 1), (int)(a + 1), (int)(a + 1), (int)(a + 1), (int)(a + 1));
   }
   fprintf(f,"\n");
 

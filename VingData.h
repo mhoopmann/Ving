@@ -135,6 +135,7 @@ public:
 
   void assessIncomplete(std::string massList, std::string protein="");
   void assessXLType();
+  void exportJSON();
   void exportProXL();
   void exportResults2();
   bool importMS2SearchResults();
