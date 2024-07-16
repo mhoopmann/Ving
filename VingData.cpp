@@ -45,7 +45,7 @@ void VingData::assessIncomplete(string massList, string protein){
     if(!protein.empty()){  //skip groups that have no peptide IDs to our protein of interest
       size_t b;
       for(b=0;b<groups[a].ms3.size();b++){
-        if(groups[a].ms3[b].protein.find(protein)!=string::npos) break;
+        if(groups[a].ms3[b].protein[0].find(protein)!=string::npos) break;
       }
       if(b==groups[a].ms3.size()) continue;
     }
@@ -211,7 +211,7 @@ void VingData::assessXLType() {
           if (bDE && groups[a].ms3[xl[b].index].prob>groups[a].probability) {
             groups[a].type = xlDeadEnd;
             groups[a].sequence = groups[a].ms3[xl[b].index].peptide;
-            groups[a].proteinS = groups[a].ms3[xl[b].index].protein;
+            groups[a].proteinS = processProteins(groups[a].ms3[xl[b].index].protein);
             groups[a].probability = groups[a].ms3[xl[b].index].prob;
             groups[a].calcNeutMassG= nm;
             groups[a].ppmG = (mm-nm)/nm*1e6;
@@ -235,7 +235,7 @@ void VingData::assessXLType() {
           if (fabs(dif) < ppm && groups[a].ms3[xl[b].index].prob* groups[a].ms3[xl[c].index].prob>=groups[a].probability*groups[a].probability) {
             groups[a].type = xlXL;
             groups[a].sequence = groups[a].ms3[xl[b].index].peptide + "+" + groups[a].ms3[xl[c].index].peptide;
-            groups[a].proteinS = groups[a].ms3[xl[b].index].protein + "+" + groups[a].ms3[xl[c].index].protein;
+            groups[a].proteinS = processProteins(groups[a].ms3[xl[b].index].protein) + "+" + processProteins(groups[a].ms3[xl[c].index].protein);
             groups[a].probability= groups[a].ms3[xl[b].index].prob * groups[a].ms3[xl[c].index].prob;
             groups[a].calcNeutMassG = xm;
             groups[a].ppmG = (mm - xm) / xm * 1e6;
@@ -328,7 +328,7 @@ void VingData::exportJSON(){
       fprintf(f, "     \"Charge\":\"%d\"\n", groups[a].ms3[b].charge);
       fprintf(f, "     \"Monoisotopic_Mass\":\"%.4lf\"\n", groups[a].ms3[b].mz * groups[a].ms3[b].charge - groups[a].ms3[b].charge * 1.007276466);
       fprintf(f, "     \"Peptide\":\"%s\"\n", groups[a].ms3[b].peptide.c_str());
-      fprintf(f, "     \"Proteins\":\"%s\"\n", groups[a].ms3[b].protein.c_str());
+      fprintf(f, "     \"Proteins\":\"%s\"\n", processProteins(groups[a].ms3[b].protein).c_str());
       fprintf(f, "     \"Precursor_Neutral_Mass\":\"%.4lf\"\n", groups[a].ms3[b].pepMass);
       fprintf(f, "     \"Peptide_Neutral_Mass\":\"%.4lf\"\n", groups[a].ms3[b].pepMass - groups[a].ms3[b].stubMass);
       fprintf(f, "     \"Probability\":\"%.4lf\"\n", groups[a].ms3[b].prob);
@@ -549,7 +549,7 @@ void VingData::exportResults2() {
       fprintf(f, "\t%d", groups[a].ms3[b].charge);
       fprintf(f, "\t%.4lf", groups[a].ms3[b].mz * groups[a].ms3[b].charge - groups[a].ms3[b].charge * 1.007276466);
       fprintf(f, "\t%s", groups[a].ms3[b].peptide.c_str());
-      fprintf(f, "\t%s", groups[a].ms3[b].protein.c_str());
+      fprintf(f, "\t%s", processProteins(groups[a].ms3[b].protein).c_str());
       fprintf(f, "\t%.4lf", groups[a].ms3[b].pepMass);
       fprintf(f, "\t%.4lf", groups[a].ms3[b].pepMass-groups[a].ms3[b].stubMass);
       fprintf(f, "\t%.4lf", groups[a].ms3[b].prob);
@@ -753,7 +753,9 @@ bool VingData::importMS3SearchResults() {
       if (sh->modification_info.empty()) groups[vp].ms3[v3].peptide = sh->peptide;
       else groups[vp].ms3[v3].peptide = sh->modification_info[0].modified_peptide;
 
-      groups[vp].ms3[v3].protein = sh->protein;
+      groups[vp].ms3[v3].protein.push_back(sh->protein);
+      for(size_t b=0;b<sh->alternative_protein.size();b++) groups[vp].ms3[v3].protein.push_back(sh->alternative_protein[b].protein);
+
       groups[vp].ms3[v3].charge = sq->assumed_charge;
       groups[vp].ms3[v3].pepMass = sh->calc_neutral_pep_mass;
 
@@ -930,6 +932,30 @@ size_t VingData::parseMzML(sMzML& fn, size_t id){
   //  cout << endl;
   //}
   return start_pos;
+}
+
+string VingData::processProteins(vector<string>& proteins){
+  bool bDecoy = true;
+  for (size_t e = 0; e < proteins.size(); e++) {
+    if (proteins[e].find(params->decoy) != 0) {
+      bDecoy = false;
+      break;
+    }
+  }
+
+  string p;
+  for (size_t e = 0; e < proteins.size(); e++) {
+    if (bDecoy) {
+      if (!p.empty()) p += ";";
+      p += proteins[e];
+    } else {
+      if (proteins[e].find(params->decoy) == 0) continue;
+      if (!p.empty()) p += ";";
+      p += proteins[e];
+    }
+  }
+
+  return p;
 }
 
 bool VingData::compareXL(sXLPep& a, sXLPep& b) {

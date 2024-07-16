@@ -23,29 +23,40 @@ enum eXLType {
 };
 
 typedef struct sMS3 {
-  int scan;
+  int scan=0;
   std::string peptide;
-  std::string protein;
-  double xcorr;
-  double eval;
-  double mz;
-  double prob;
-  double pepMass;   //mass including stub
-  double stubMass;  //just the stub
-  bool stubA;
-  int charge;
-  int pos;          //site of crosslinker, relative to peptide (1-based)
-  sMS3() {
-    scan = 0;
-    xcorr = 0;
-    eval = 0;
-    mz = 0;
-    charge = 0;
-    pepMass = 0;
-    stubMass = 0;
-    stubA=true;
-    pos=0;
-    prob=0;
+  std::vector<std::string> protein;
+  double xcorr=0;
+  double eval=0;
+  double mz=0;
+  double prob=0;
+  double pepMass=0;   //mass including stub
+  double stubMass=0;  //just the stub
+  bool stubA=true;
+  int charge=0;
+  int pos=0;          //site of crosslinker, relative to peptide (1-based)
+  std::string processProteins(std::string decoy) {
+    bool bDecoy = true;
+    for (size_t e = 0; e < protein.size(); e++) {
+      if (protein[e].find(decoy) != 0) {
+        bDecoy = false;
+        break;
+      }
+    }
+
+    std::string p;
+    for (size_t e = 0; e < protein.size(); e++) {
+      if (bDecoy) {
+        if (!p.empty()) p += ";";
+        p += protein[e];
+      } else {
+        if (protein[e].find(decoy) == 0) continue;
+        if (!p.empty()) p += ";";
+        p += protein[e];
+      }
+    }
+
+    return p;
   }
 } sMS3;
 
@@ -156,6 +167,7 @@ private:
 
   void exportProXLLinkers(FILE* f);
   void exportProXLSearchProgramInfo(FILE* f);
+  std::string processProteins(std::vector<std::string>& proteins);
 };
 
 #endif

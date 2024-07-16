@@ -9,8 +9,8 @@
 using namespace std;
 using namespace MSToolkit;
 
-#define BDATE "May 25 2023"
-#define VERSION "0.8.0"
+#define BDATE "July 15 2024"
+#define VERSION "0.8.1"
 
 int cmdLine(int argc, char* argv[]);
 void exportResults2(const char* fn, vector<sMS2>& v);
@@ -105,7 +105,7 @@ void exportResults2(const char* fn, vector<sMS2>& v){
       fprintf(f, "\t%d", v[a].ms3[b].charge);
       fprintf(f, "\t%.4lf", v[a].ms3[b].mz * v[a].ms3[b].charge - v[a].ms3[b].charge * 1.007276466);
       fprintf(f, "\t%s", v[a].ms3[b].peptide.c_str());
-      fprintf(f,"\t%s",v[a].ms3[b].protein.c_str());
+      fprintf(f,"\t%s",v[a].ms3[b].processProteins(params.decoy).c_str());
       fprintf(f, "\t%.4lf", v[a].ms3[b].pepMass);
       fprintf(f, "\t%.4lf", v[a].ms3[b].prob);
       b++;

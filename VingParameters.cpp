@@ -43,6 +43,7 @@ void VingParameters::exportDefault(string ver){
   fprintf(f, "\n");
   fprintf(f, "probability_type = 1  #0 = PeptideProphet, 1 = iProphet\n");
   fprintf(f, "ppm_tolerance = 20.0  #parent ion mass tolerance, in ppm, default=10.0\n");
+  fprintf(f, "decoy_identifier = DECOY\n");
 
   fclose(f);
 }
@@ -148,6 +149,8 @@ void VingParameters::parseParam(const char* str){
     } else {
       crosslinker=xlTable[a];
     }
+  } else if (strcmp(param, "decoy_identifier") == 0) {
+    decoy = values[0];
   } else if (strcmp(param, "ms2_search_result") == 0) {
     ms2SearchResult=values[0];
   } else if (strcmp(param, "ms3_search_result") == 0) {

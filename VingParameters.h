@@ -30,6 +30,7 @@ public:
   bool parse(const char* fn);
 
   vingXL crosslinker;
+  std::string decoy="DECOY";
   std::string mzML;
   std::string ms2SearchResult;
   std::string ms3SearchResult;
