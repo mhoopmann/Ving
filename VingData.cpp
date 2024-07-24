@@ -136,7 +136,7 @@ void VingData::assessXLType() {
       groups[a].type = xlSingle;
       groups[a].xlMass=0;
       groups[a].sequence = groups[a].peptide;
-      groups[a].proteinS = groups[a].protein;
+      groups[a].proteinS = processProteins(groups[a].protein);
       groups[a].probability= groups[a].probabilityMS2;
       groups[a].calcNeutMassG=groups[a].calcNeutMass;
       groups[a].ppmG=(mm-groups[a].calcNeutMass)/groups[a].calcNeutMass*1e6;
@@ -318,6 +318,10 @@ void VingData::exportJSON(){
     fprintf(f, "    \"m/z\":\"%.4lf\"\n", groups[a].mz);
     fprintf(f, "    \"Charge\":\"%d\"\n", groups[a].charge);
     fprintf(f, "    \"Monoisotopic_Mass\":\"%.4lf\"\n", groups[a].monoMZ * groups[a].charge - groups[a].charge * 1.007276466);
+    fprintf(f, "    \"Peptide\":\"%s\"\n", groups[a].peptide.c_str());
+    fprintf(f, "    \"Proteins\":\"%s\"\n", processProteins(groups[a].protein).c_str());
+    fprintf(f, "    \"Peptide_Neutral_Mass\":\"%.4lf\"\n", groups[a].calcNeutMass);
+    fprintf(f, "    \"Probability\":\"%.4lf\"\n", groups[a].probabilityMS2);
     fprintf(f, "   }\n");
 
     fprintf(f, "   \"MS3_Scan\":[\n");
@@ -536,7 +540,7 @@ void VingData::exportResults2() {
     fprintf(f, "\t%s", groups[a].proteinS.c_str());
     if (!groups[a].peptide.empty()) {
       fprintf(f, "\t%s", groups[a].peptide.c_str());
-      fprintf(f, "\t%s", groups[a].protein.c_str());
+      fprintf(f, "\t%s", processProteins(groups[a].protein).c_str());
       fprintf(f, "\t%.4lf", groups[a].calcNeutMass);
       fprintf(f, "\t%.4lf", groups[a].probabilityMS2);
     } else fprintf(f, "\tn/a\tn/a\t0\t0");
@@ -636,7 +640,8 @@ bool VingData::importMS2SearchResults() {
       if (sh->modification_info.empty()) groups[vp].peptide = sh->peptide;
       else groups[vp].peptide = sh->modification_info[0].modified_peptide;
 
-      groups[vp].protein = sh->protein;
+      groups[vp].protein.push_back(sh->protein);
+      for(size_t b=0;b<sh->alternative_protein.size();b++) groups[vp].protein.push_back(sh->alternative_protein[b].protein);
       groups[vp].charge = sq->assumed_charge;
       groups[vp].calcNeutMass = sh->calc_neutral_pep_mass;
 

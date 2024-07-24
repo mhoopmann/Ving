@@ -85,7 +85,7 @@ typedef struct sMS2 {
   eXLType type=xlUnknown;
   std::string peptide;
   std::string sequence;
-  std::string protein;
+  std::vector<std::string> protein;
   std::string proteinS;
   std::vector<sMS3> ms3;
   std::vector<sMod> mods;
@@ -111,6 +111,29 @@ typedef struct sMS2 {
     sequence.clear();
     protein.clear();
     proteinS.clear();
+  }
+  std::string processProteins(std::string decoy) {
+    bool bDecoy = true;
+    for (size_t e = 0; e < protein.size(); e++) {
+      if (protein[e].find(decoy) != 0) {
+        bDecoy = false;
+        break;
+      }
+    }
+
+    std::string p;
+    for (size_t e = 0; e < protein.size(); e++) {
+      if (bDecoy) {
+        if (!p.empty()) p += ";";
+        p += protein[e];
+      } else {
+        if (protein[e].find(decoy) == 0) continue;
+        if (!p.empty()) p += ";";
+        p += protein[e];
+      }
+    }
+
+    return p;
   }
 } sMS2;
 
