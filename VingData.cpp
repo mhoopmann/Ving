@@ -298,7 +298,7 @@ void VingData::exportJSON(){
   fprintf(f, " \"ScanGroup\":[\n");
   for (size_t a = 0; a < groups.size(); a++) {
     fprintf(f, "  {\n");
-    fprintf(f, "   \"GroupID\":\"%d\",\n", (int)a);
+    fprintf(f, "   \"GroupID\":%d,\n", (int)a);
     fprintf(f, "   \"Designation\":");
     switch (groups[a].type) {
     case xlDeadEnd: fprintf(f, "\"DeadEnd\",\n"); break;
@@ -308,34 +308,34 @@ void VingData::exportJSON(){
     case xlIncomplete: fprintf(f, "\"Incomplete\",\n"); break;
     default: fprintf(f, "\"Unknown\",\n"); break;
     }
-    fprintf(f, "   \"Probability\":\"%.4lf\",\n", groups[a].probability);
+    fprintf(f, "   \"Probability\":%.4lf,\n", groups[a].probability);
     fprintf(f, "   \"MSFile\":\"%s\",\n", files[groups[a].fileID].base.c_str());
     fprintf(f, "   \"Sequence\":\"%s\",\n", groups[a].sequence.c_str());
     fprintf(f, "   \"Proteins\":\"%s\",\n", groups[a].proteinS.c_str());
 
     fprintf(f, "   \"MS2_Scan\":{\n");
-    fprintf(f, "    \"ScanNumber\":\"%d\"\n", groups[a].scan);
-    fprintf(f, "    \"m/z\":\"%.4lf\"\n", groups[a].mz);
-    fprintf(f, "    \"Charge\":\"%d\"\n", groups[a].charge);
-    fprintf(f, "    \"Monoisotopic_Mass\":\"%.4lf\"\n", groups[a].monoMZ * groups[a].charge - groups[a].charge * 1.007276466);
+    fprintf(f, "    \"ScanNumber\":%d\n", groups[a].scan);
+    fprintf(f, "    \"m/z\":%.4lf\n", groups[a].mz);
+    fprintf(f, "    \"Charge\":%d\n", groups[a].charge);
+    fprintf(f, "    \"Monoisotopic_Mass\":%.4lf\n", groups[a].monoMZ * groups[a].charge - groups[a].charge * 1.007276466);
     fprintf(f, "    \"Peptide\":\"%s\"\n", groups[a].peptide.c_str());
     fprintf(f, "    \"Proteins\":\"%s\"\n", processProteins(groups[a].protein).c_str());
-    fprintf(f, "    \"Peptide_Neutral_Mass\":\"%.4lf\"\n", groups[a].calcNeutMass);
-    fprintf(f, "    \"Probability\":\"%.4lf\"\n", groups[a].probabilityMS2);
+    fprintf(f, "    \"Peptide_Neutral_Mass\":%.4lf\n", groups[a].calcNeutMass);
+    fprintf(f, "    \"Probability\":%.4lf\n", groups[a].probabilityMS2);
     fprintf(f, "   }\n");
 
     fprintf(f, "   \"MS3_Scan\":[\n");
     for(size_t b=0;b < groups[a].ms3.size();b++) {
       fprintf(f,"    {\n");
-      fprintf(f, "     \"ScanNumber\":\"%d\"\n", groups[a].ms3[b].scan);
-      fprintf(f, "     \"m/z\":\"%.4lf\"\n", groups[a].ms3[b].mz);
-      fprintf(f, "     \"Charge\":\"%d\"\n", groups[a].ms3[b].charge);
-      fprintf(f, "     \"Monoisotopic_Mass\":\"%.4lf\"\n", groups[a].ms3[b].mz * groups[a].ms3[b].charge - groups[a].ms3[b].charge * 1.007276466);
+      fprintf(f, "     \"ScanNumber\":%d\n", groups[a].ms3[b].scan);
+      fprintf(f, "     \"m/z\":%.4lf\n", groups[a].ms3[b].mz);
+      fprintf(f, "     \"Charge\":%d\n", groups[a].ms3[b].charge);
+      fprintf(f, "     \"Monoisotopic_Mass\":%.4lf\n", groups[a].ms3[b].mz * groups[a].ms3[b].charge - groups[a].ms3[b].charge * 1.007276466);
       fprintf(f, "     \"Peptide\":\"%s\"\n", groups[a].ms3[b].peptide.c_str());
       fprintf(f, "     \"Proteins\":\"%s\"\n", processProteins(groups[a].ms3[b].protein).c_str());
-      fprintf(f, "     \"Precursor_Neutral_Mass\":\"%.4lf\"\n", groups[a].ms3[b].pepMass);
-      fprintf(f, "     \"Peptide_Neutral_Mass\":\"%.4lf\"\n", groups[a].ms3[b].pepMass - groups[a].ms3[b].stubMass);
-      fprintf(f, "     \"Probability\":\"%.4lf\"\n", groups[a].ms3[b].prob);
+      fprintf(f, "     \"Precursor_Neutral_Mass\":%.4lf\n", groups[a].ms3[b].pepMass);
+      fprintf(f, "     \"Peptide_Neutral_Mass\":%.4lf\n", groups[a].ms3[b].pepMass - groups[a].ms3[b].stubMass);
+      fprintf(f, "     \"Probability\":%.4lf\n", groups[a].ms3[b].prob);
       fprintf(f, "    }");
       if (b < groups[a].ms3.size() - 1) fprintf(f, ",");
       fprintf(f, "\n");
